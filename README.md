@@ -12,3 +12,10 @@ A total of 14 samples of RNAseq data were analyzed. Two datasets were used:
  - The first comprised six samples from the Wt strain, three of which were cultivated at 0.6 M NaCl (Wt06A, Wt06B, Wt06C) and the remaining three at 2.5 M NaCl (Wt25A, Wt25B, Wt25C). The files used were .bam files. These data were obtained using the SOLiD sequencing platform.
  - The second dataset comprised six samples from the eupR mutant strain, three when it was cultivated at 0.6 M NaCl (EupR06A, EupR06B, EupR06C) and three at 2.5 M NaCl (EupR25A, EupR25B, EupR25C), and two samples from the Wt strain (Wt06I, Wt25I), one corresponding to each salinity. The files used were the FASTQ files generados por la plataforma de secuenciación Illumina.
 
+
+
+## Scripts information
+- bash_script.sh: includes all Bash code used for sample processing, written as a command-line workflow. Two additional scripts were generated for specific processes, which are also included.
+- analysis_fastqc.sh: includes only the quality analysis of the reads performed with the FASTQC software.
+- map_bwa.sh: includes only the mapping of reads to the reference genome using the Burrows-Wheeler Aligner (BWA) with the BWA-MEM algorithm.
+- r_analysis.sh: includes all code used in R.
