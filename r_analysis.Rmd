@@ -1,0 +1,974 @@
+---
+title: Transcriptomic insights into EupR as a crucial regulator of osmoadaptation
+  in Chromohalobacter salexigens.
+author: "Clara Estévez Lebrato"
+output: html_document
+---
+
+## ANÁLISIS DE EXPRESIÓN DIFERENCIAL
+
+El análisis de expresión diferencial se va a realizar con *el paquete de R DESeq2*. 
+
+```{r message=FALSE, warning=FALSE}
+library(DESeq2)
+```
+
+### DEFINIR LA MATRIZ DE CONTEOS
+
+Antes de comenzar con el análisis, se carga el archivo generado con el software FeatureCounts, que contiene el número de lecturas que presenta cada gen. 
+
+```{r}
+gene.count.matrix <- read.table(file = "./data/gene_matrix_counts.txt",header = T,sep = "\t")
+head(gene.count.matrix)
+```
+
+```{r}
+genes.id <- gene.count.matrix$Geneid # Guardar nombre de los genes
+gene.count.matrix <- gene.count.matrix[, -c(1:6)] # Eliminar columnas irrelevantes
+# Renombrar
+new.order <- c("..sample07.Wt06_illumina_sorted.bam", "..sample09.Wt06_A_solid.bam", "..sample09.Wt06_B_solid.bam", "..sample09.Wt06_C_solid.bam", "..sample08.Wt25_illumina_sorted.bam", "..sample09.Wt25_A_solid.bam", "..sample09.Wt25_B_solid.bam", "..sample09.Wt25_C_solid.bam", "..sample01.Eup6_A_sorted.bam", "..sample02.Eup6_B_sorted.bam", "..sample03.Eup6_C_sorted.bam", "..sample04.Eup25_A_sorted.bam", "..sample05.Eup25_B_sorted.bam", "..sample06.Eup25_C_sorted.bam")
+gene.count.matrix <- gene.count.matrix[, new.order]
+rm(new.order)
+name.samples <- c("WT06_illumina", "WT06_A_solid", "WT06_B_solid", 
+             "WT06_C_solid", "WT25_illumina", "WT25_A_solid", "WT25_B_solid", "WT25_C_solid", 
+             "EupR06_A", "EupR06_B", "EupR06_C", "EupR25_A", "EupR25_B", "EupR25_C")
+colnames(gene.count.matrix) <- name.samples
+row.names(gene.count.matrix) <- genes.id
+head(gene.count.matrix)
+```
+
+### PREPARACIÓN DE LOS DATOS
+
+```{r}
+# Crear los diferentes grupos en vectores
+condition <- c("WT", "WT", "WT", "WT",
+               "WT", "WT", "WT", "WT",
+               "EupR", "EupR", "EupR",
+               "EupR", "EupR", "EupR")
+
+subgroup <- c("06", "06", "06", "06",
+              "25", "25", "25", "25",
+              "06", "06", "06",
+              "25", "25", "25")
+
+group <- paste(condition, subgroup, sep = "_")  # WT_06, EupR_25, etc.
+
+platform <- c("Illumina", "SOLiD", "SOLiD", "SOLiD",
+              "Illumina", "SOLiD", "SOLiD", "SOLiD",
+              "Illumina", "Illumina", "Illumina",
+              "Illumina", "Illumina", "Illumina")
+
+# Creación de colData
+coldata.deseq <- data.frame( row.names = name.samples,
+                       condition = factor(condition),
+                       subgroup = factor(subgroup),
+                       group = factor(group),
+                       platform = factor(platform))
+coldata.deseq
+```
+
+El análisis de DESeq() incluye varios pasos clave: primero, normaliza los conteos para corregir diferencias en la profundidad de secuenciación entre muestras mediante factores de tamaño; luego estima la dispersión de los conteos para cada gen, lo cual es esencial para modelar correctamente la variabilidad biológica; y finalmente, ajusta modelos de regresión negativa binomial por gen según la fórmula de diseño especificada, con el fin de detectar diferencias de expresión estadísticamente significativas entre condiciones.
+
+Al utilizar *design = ~ platform + group*, se establece un modelo matemático que primero corrige el efecto técnico asociado a la plataforma de secuenciación (Illumina o SOLiD) y, posteriormente, evalúa las diferencias de expresión génica atribuibles al grupo experimental, definido por la combinación de la condición genética (WT o EupR) y el nivel de salinidad (0.6 M o 2.5 M NaCl). 
+
+```{r message=FALSE, warning=FALSE}
+deseq.object <- DESeqDataSetFromMatrix(countData = gene.count.matrix,  
+                              colData = coldata.deseq,
+                              design = ~ platform + group)
+deseq.analysis <- DESeq(deseq.object)
+deseq.analysis
+```
+
+```{r warning=FALSE}
+# Extraer matriz normalizada y agregar los genesID
+normalized.gene.count.matrix <- counts(deseq.analysis, normalized = TRUE)
+normalized.gene.count.matrix <- as.data.frame(normalized.gene.count.matrix)
+normalized.gene.count.matrix$GeneID <- genes.id
+normalized.gene.count.matrix <- normalized.gene.count.matrix[, c("GeneID", setdiff(names(normalized.gene.count.matrix), "GeneID"))]
+
+# Agregar función del gen
+library(readxl)
+c.salexigens.name <- read_xlsx("./data/genome_c_salexigens_annotation.xlsx")
+c.salexigens.name <- as.data.frame(c.salexigens.name)
+normalized.gene.count.matrix$GeneID <- sub("^gene-", "", normalized.gene.count.matrix$GeneID) # Eliminar "gene-"
+normalized.gene.count.matrix$name_NCBI_2019 <- c.salexigens.name$name_NCBI_2019[
+  match(normalized.gene.count.matrix$GeneID, c.salexigens.name$Old_locus_tag)] # Agregar
+normalized.gene.count.matrix$name_NCBI_2019[is.na(normalized.gene.count.matrix$name_NCBI_2019)] <- "" # Elimar NA y quedar espacio en blanco
+normalized.gene.count.matrix$Uniprot_protein_name_2019 <- c.salexigens.name$Uniprot_protein_name_2019[
+  match(normalized.gene.count.matrix$GeneID, c.salexigens.name$Old_locus_tag)] # Agregar
+normalized.gene.count.matrix$Uniprot_protein_name_2019[is.na(normalized.gene.count.matrix$Uniprot_protein_name_2019)] <- "" # Elimar NA y quedar espacio en blanco
+
+# Guardar matriz
+library(writexl)
+write_xlsx(normalized.gene.count.matrix, path = "./data/normalized_gene_matrix_counts.xlsx", col_names = TRUE, )
+```
+
+Para la representación en PCA, aunque DESeq2 ya normaliza los conteos para corregir diferencias en la profundidad de secuenciación, esta normalización no es suficiente para este análisis exploratorio. Esto se debe a que los conteos normalizados aún presentan una fuerte dependencia entre la media y la varianza, lo que puede distorsionar la interpretación de distancias entre muestras. Por eso, antes de hacer un PCA, se aplica una transformación como VST (Variance Stabilizing Transformation), que estabiliza la varianza a lo largo del rango de expresión y convierte los datos a una escala más comparable entre genes, haciendo que el PCA refleje diferencias biológicas reales y no artefactos técnicos.
+
+```{r message=FALSE, warning=FALSE}
+# Aplicar VST: Transforma a escala logarítmica y elimina la dependencia entre media y varianza
+vst.transformed <- varianceStabilizingTransformation(deseq.analysis, blind = FALSE)
+
+# Extraer la matriz de expresión transformada
+vst.matrix <- assay(vst.transformed)
+
+# Para la visualización de los datos varianceStabilizingTransformation() no garantiza que se eliminen los efectos de lote por eso se debe usar esta función del paquete Limma
+library(limma)
+vst.matrix.corrected.batch.effect <- removeBatchEffect(vst.matrix, batch = coldata.deseq$platform) 
+
+pca.csalexigens <- prcomp(t(vst.matrix.corrected.batch.effect), scale. = TRUE)
+summary(pca.csalexigens)
+```
+
+Se visualizarán las dos primeras componentes principales.
+
+```{r}
+# Visualización
+library(FactoMineR)
+library(factoextra)
+
+fviz_pca_ind(pca.csalexigens, col.ind = coldata.deseq$group,
+             addEllipses = TRUE,ellipse.type = "confidence",
+             pointshape = 21, fill = coldata.deseq$group,
+             title = "Principal Component Analysis (PCA) of the dataset")
+```
+
+A continuación vamos a realizar los contrastes que realmente interesan para determinar así los genes diferencialmente expresados primero a 0.6 M NaCl y luego a 2.5 M NaCl y a diferentes umbrales de Fold-Change, que deberán estudiarse.
+
+```{r message=FALSE, warning=FALSE}
+# WT vs EupR a 0.6 M NaCl
+result.EupR06vs.Wt06 <- results(deseq.analysis, contrast = c("group", "EupR_06", "WT_06"))
+result.EupR06vs.Wt06
+
+# Guardar datos y agregar Locus and NCBI name
+df.result.EupR06vs.Wt06 <- as.data.frame(result.EupR06vs.Wt06)
+df.result.EupR06vs.Wt06$GeneID <- rownames(df.result.EupR06vs.Wt06)
+df.result.EupR06vs.Wt06 <- df.result.EupR06vs.Wt06[, c("GeneID", colnames(df.result.EupR06vs.Wt06)[1:6])] # Ponerla primero
+
+df.result.EupR06vs.Wt06$GeneID <- sub("^gene-", "", normalized.gene.count.matrix$GeneID) # Eliminar "gene-"
+
+# Locus tag new
+df.result.EupR06vs.Wt06$Locus_tag <- c.salexigens.name$Locus_tag[
+  match(df.result.EupR06vs.Wt06$GeneID, c.salexigens.name$Old_locus_tag)] # Agregar
+df.result.EupR06vs.Wt06$Locus_tag[is.na(df.result.EupR06vs.Wt06$Locus_tag)] <- "" # Elimar NA y quedar espacio en blanco
+
+# Columna 1
+df.result.EupR06vs.Wt06$name_NCBI_2019 <- c.salexigens.name$name_NCBI_2019[
+  match(df.result.EupR06vs.Wt06$GeneID, c.salexigens.name$Old_locus_tag)] # Agregar
+df.result.EupR06vs.Wt06$name_NCBI_2019[is.na(df.result.EupR06vs.Wt06$name_NCBI_2019)] <- "" # Elimar NA y quedar espacio en blanco
+
+# Columna 2
+df.result.EupR06vs.Wt06$Uniprot_protein_name_2019 <- c.salexigens.name$Uniprot_protein_name_2019[
+  match(df.result.EupR06vs.Wt06$GeneID, c.salexigens.name$Old_locus_tag)] # Agregar
+df.result.EupR06vs.Wt06$Uniprot_protein_name_2019[is.na(df.result.EupR06vs.Wt06$Uniprot_protein_name_2019)] <- "" # Elimar NA y quedar espacio en blanco
+
+write_xlsx(df.result.EupR06vs.Wt06, path = "./degs/results_EupR06vs_Wt06.xlsx", col_names = TRUE)
+```
+
+Antes de establecer un umbral de fold-change para definir los genes sobreexpresados o infraexpresados en esta condición, es útil observar cómo se distribuyen según distintos rangos de fold-change. Este análisis preliminar permite identificar los intervalos donde se concentra el mayor número de genes, lo cual es clave para elegir un umbral representativo. Posteriormente, se tendrá en cuenta también el valor de p ajustado para refinar la selección de genes diferencialmente expresados.
+
+```{r message=FALSE}
+# Gráfico para ver qué genes se encuentran en qué umbrales de fold-change
+
+fc_breaks <- c(1.8, 2, 3, 4, 5, 10, 20, Inf)
+log2_breaks <- log2(fc_breaks)
+group_labels <- c("1.8–2", "2–3", "3–4", "4–5", "5–10", "10–20", ">20")
+
+
+# Crear columna de grupo usando valor absoluto del fold-change
+df.result.EupR06vs.Wt06$fc_group <- cut(abs(df.result.EupR06vs.Wt06$log2FoldChange),
+                                       breaks = log2_breaks,
+                                       labels = group_labels,
+                                       right = FALSE)
+
+# Crear columna de dirección (Up o Down)
+df.result.EupR06vs.Wt06$status <- ifelse(df.result.EupR06vs.Wt06$log2FoldChange > 0, "EupR Upregulated genes", "EupR Downregulated genes")
+
+# Eliminar NA
+df.result.EupR06vs.Wt06.filtered <- df.result.EupR06vs.Wt06[!is.na(df.result.EupR06vs.Wt06$fc_group), ]
+
+# Calcular tabla de resumen
+counts.genes.06 <- table(df.result.EupR06vs.Wt06.filtered$fc_group, df.result.EupR06vs.Wt06.filtered$status)
+
+# Convertir los datos a un formato adecuado para ggplot
+df.barpot.results.06 <- as.data.frame(counts.genes.06)
+colnames(df.barpot.results.06) <- c("fc_group", "status", "n")
+
+# Ajustar los valores para las barras de "Down" a negativos
+df.barpot.results.06$n <- ifelse(df.barpot.results.06$status == "EupR Downregulated genes", -df.barpot.results.06$n, df.barpot.results.06$n)
+
+# Plot
+ggplot(df.barpot.results.06, aes(x = fc_group, y = n, fill = status)) +
+  geom_bar(stat = "identity", position = "stack") +
+  scale_fill_manual(values = c("EupR Upregulated genes" = "mediumseagreen", "EupR Downregulated genes" = "indianred")) +
+  labs(title = "Range of DEGs EupR (0.6 M NaCl)",
+       x = "Range of fold-change",
+       y = "Number of DEGs",
+       fill = "Expression Status") +
+  theme_minimal() +
+theme(
+  legend.position = c(0.75, 0.15),  
+  legend.justification = "center",
+  legend.background = element_rect(fill = "white", color = "black")) +
+  scale_y_continuous(
+    limits = c(-175, 175),                      # Fijar límites del eje Y
+    breaks = seq(-175, 175, 25),                # Ticks de -150 a 150
+    labels = abs(seq(-175, 175, 25)))
+```
+
+```{r}
+counts.genes.06
+```
+
+En vista de los resultados, se elige el umbral de fold-change 1.8.
+
+```{r}
+# EXPRESIÓN DIFERENCIAL EN 0.6 M NaCl
+
+log2fc.06 <- df.result.EupR06vs.Wt06$log2FoldChange
+adjusted.pval.06 <- df.result.EupR06vs.Wt06$padj
+genes.ids.06 <- rownames(df.result.EupR06vs.Wt06)
+
+names(log2fc.06) <- genes.ids.06
+names(adjusted.pval.06) <- genes.ids.06
+
+# Activados
+EupR06.Upregulated.FC18 <- genes.ids.06[log2fc.06 > log2(1.8) & 
+                                   adjusted.pval.06 < 0.05]
+
+# Reprimidos
+EupR06.Downregulated.FC18 <- genes.ids.06[log2fc.06 < -log2(1.8) & 
+                                   adjusted.pval.06 < 0.05]
+
+cat("Para un fold change de 1.8 hay", 
+    length(EupR06.Upregulated.FC18), "genes sobreexpresados y", 
+    length(EupR06.Downregulated.FC18), "genes infraexpresados.\n")
+```
+
+```{r}
+# Función para guardar un subconjunto de genes con todas sus columnas en .xlsx
+save.genes.fc <- function(genes, result_table, file_name) {
+  # Filtrar genes por rownames
+  df_genes <- result_table[rownames(result_table) %in% genes, ]
+  
+  # Añadir columna GeneID
+  df_genes$GeneID <- rownames(df_genes)
+  
+  # Reordenar columnas: poner GeneID primero
+  df_genes <- df_genes[, c("GeneID", setdiff(names(df_genes), "GeneID"))]
+  df_genes <- as.data.frame(df_genes)
+  
+  # Guardar en archivo Excel
+  write_xlsx(df_genes, path = file_name)
+}
+
+# La función setdiff() en R devuelve los elementos que están en el primer conjunto pero no en el segundo.
+
+save.genes.fc(EupR06.Upregulated.FC18, df.result.EupR06vs.Wt06, "./degs/fold_change_18/genes_up_06_FC18.xlsx")
+save.genes.fc(EupR06.Downregulated.FC18, df.result.EupR06vs.Wt06, "./degs/fold_change_18/genes_down_06_FC18.xlsx")
+```
+
+Exactamente lo mismo para la condición 2.5 M NaCl.
+
+```{r}
+# WT vs EupR a 2.5 M NaCl
+result.EupR25vs.Wt25 <- results(deseq.analysis, contrast = c("group", "EupR_25", "WT_25"))
+result.EupR25vs.Wt25
+
+df.result.EupR25vs.Wt25 <- as.data.frame(result.EupR25vs.Wt25)
+df.result.EupR25vs.Wt25$GeneID <- rownames(df.result.EupR25vs.Wt25)
+df.result.EupR25vs.Wt25 <- df.result.EupR25vs.Wt25[, c("GeneID", colnames(df.result.EupR25vs.Wt25)[1:6])] # Ponerla primero
+
+df.result.EupR25vs.Wt25$GeneID <- sub("^gene-", "", normalized.gene.count.matrix$GeneID) # Eliminar "gene-"
+
+# Locus tag new
+df.result.EupR25vs.Wt25$Locus_tag <- c.salexigens.name$Locus_tag[
+  match(df.result.EupR25vs.Wt25$GeneID, c.salexigens.name$Old_locus_tag)] # Agregar
+df.result.EupR25vs.Wt25$Locus_tag[is.na(df.result.EupR25vs.Wt25$Locus_tag)] <- "" # Elimar NA y quedar espacio en blanco
+
+# Columna 1
+df.result.EupR25vs.Wt25$name_NCBI_2019 <- c.salexigens.name$name_NCBI_2019[
+  match(df.result.EupR25vs.Wt25$GeneID, c.salexigens.name$Old_locus_tag)] # Agregar
+df.result.EupR25vs.Wt25$name_NCBI_2019[is.na(df.result.EupR25vs.Wt25$name_NCBI_2019)] <- "" # Elimar NA y quedar espacio en blanco
+
+# Columna 2
+df.result.EupR25vs.Wt25$Uniprot_protein_name_2019 <- c.salexigens.name$Uniprot_protein_name_2019[
+  match(df.result.EupR25vs.Wt25$GeneID, c.salexigens.name$Old_locus_tag)] # Agregar
+df.result.EupR25vs.Wt25$Uniprot_protein_name_2019[is.na(df.result.EupR25vs.Wt25$Uniprot_protein_name_2019)] <- "" # Elimar NA y quedar espacio en blanco
+
+write_xlsx(df.result.EupR25vs.Wt25, path = "./degs/results_EupR25vs_Wt25.xlsx", col_names = TRUE)
+```
+
+```{r message=FALSE}
+# Gráfico para ver qué genes se encuentran en qué umbrales de fold-change
+
+fc_breaks <- c(1.8, 2, 3, 4, 5, 10, 20, Inf)
+log2_breaks <- log2(fc_breaks)
+group_labels <- c("1.8–2", "2–3", "3–4", "4–5", "5–10", "10–20", ">20")
+
+
+# Crear columna de grupo usando valor absoluto del fold-change
+df.result.EupR25vs.Wt25$fc_group <- cut(abs(df.result.EupR25vs.Wt25$log2FoldChange),
+                                       breaks = log2_breaks,
+                                       labels = group_labels,
+                                       right = FALSE)
+
+# Crear columna de dirección (Up o Down)
+df.result.EupR25vs.Wt25$status <- ifelse(df.result.EupR25vs.Wt25$log2FoldChange > 0, "EupR Upregulated genes", "EupR Downregulated genes")
+
+# Eliminar NA
+df.result.EupR25vs.Wt25.filtered <- df.result.EupR25vs.Wt25[!is.na(df.result.EupR25vs.Wt25$fc_group), ]
+
+# Calcular tabla de resumen
+counts.genes.25 <- table(df.result.EupR25vs.Wt25.filtered$fc_group, df.result.EupR25vs.Wt25.filtered$status)
+
+# Convertir los datos a un formato adecuado para ggplot
+df.barpot.results.25 <- as.data.frame(counts.genes.25)
+colnames(df.barpot.results.25) <- c("fc_group", "status", "n")
+
+# Ajustar los valores para las barras de "Down" a negativos
+df.barpot.results.25$n <- ifelse(df.barpot.results.25$status == "EupR Downregulated genes", -df.barpot.results.25$n, df.barpot.results.25$n)
+
+# Plot
+ggplot(df.barpot.results.25, aes(x = fc_group, y = n, fill = status)) +
+  geom_bar(stat = "identity", position = "stack") +
+  scale_fill_manual(values = c("EupR Upregulated genes" = "mediumseagreen", "EupR Downregulated genes" = "indianred")) +
+  labs(title = "Range of DEGs EupR (2.5 M NaCl)",
+       x = "Range of fold-change",
+       y = "Number of DEGs",
+       fill = "Expression Status") +
+  theme_minimal() +
+theme(
+  legend.position = c(0.75, 0.15), 
+  legend.justification = "center",
+  legend.background = element_rect(fill = "white", color = "black")) +
+  scale_y_continuous(
+    limits = c(-175, 175),                      # Fijar límites del eje Y
+    breaks = seq(-175, 175, 25),                # Ticks de -150 a 150
+    labels = abs(seq(-175, 175, 25)))           # Mostrar solo valores positivos
+```
+
+```{r}
+counts.genes.25
+```
+
+```{r}
+# EXPRESIÓN DIFERENCIAL EN 0.25 M NaCl
+
+log2fc.25 <- result.EupR25vs.Wt25$log2FoldChange
+adjusted.pval.25 <- result.EupR25vs.Wt25$padj
+genes.ids.25 <- rownames(result.EupR25vs.Wt25)
+
+names(log2fc.25) <- genes.ids.25
+names(adjusted.pval.25) <- genes.ids.25
+
+# Activados
+EupR25.Upregulated.FC18 <- genes.ids.25[log2fc.25 > log2(1.8) & 
+                                   adjusted.pval.25 < 0.05]
+
+# Reprimidos
+EupR25.Downregulated.FC18 <- genes.ids.25[log2fc.25 < -log2(1.8) & 
+                                   adjusted.pval.25 < 0.05]
+
+cat("Para un fold change de 1.8 hay", 
+    length(EupR25.Upregulated.FC18), "genes sobreexpresados y", 
+    length(EupR25.Downregulated.FC18), "genes infraexpresados.\n")
+
+save.genes.fc(EupR25.Upregulated.FC18, df.result.EupR25vs.Wt25, "./degs/fold_change_18/genes_up_25_FC18.xlsx")
+save.genes.fc(EupR25.Downregulated.FC18, df.result.EupR25vs.Wt25, "./degs/fold_change_18/genes_down_25_FC18.xlsx")
+```
+
+```{r}
+# Valores del eje Y: -log10(p-valor)
+log.pval.06 <- -log10(adjusted.pval.06)
+log.pval.25 <- -log10(adjusted.pval.25)
+
+# Configurar layout
+par(mfrow = c(1, 2))  # 1 fila, 2 columnas
+
+# Volcano plot para log2FC 1.8 (0.06 M NaCl)
+plot(log2fc.06, log.pval.06, pch=19, col="grey", cex=0.7,
+     xlim=c(-9, 9), ylim=c(0, 35),
+     xlab="log2(fold-change)", ylab="-log10(Adj p-val)",
+     main="DEGs salinity 0.6 M NaCl 
+     (log2FC 1.8)")
+legend("topleft", 
+       legend = c("Upregulated genes", "Downregulated genes", "Non-significant genes"), 
+       col = c("mediumseagreen","indianred", "grey"), 
+       pch = 19, 
+       cex = 0.8, 
+       bty = "n")
+
+points(x = log2fc.06[EupR06.Upregulated.FC18],
+       y = log.pval.06[EupR06.Upregulated.FC18],
+       col = "indianred", cex = 0.7, pch = 19)
+
+points(x = log2fc.06[EupR06.Downregulated.FC18],
+       y = log.pval.06[EupR06.Downregulated.FC18],
+       col = "mediumseagreen", cex = 0.7, pch = 19)
+
+# Volcano plot para log2FC 1.8 (2.5 M NaCl)
+plot(log2fc.25, log.pval.25, pch=19, col="grey", cex=0.7,
+     xlim=c(-9, 9), ylim=c(0, 35),
+     xlab="log2(fold-change)", ylab="-log10(Adj p-val)",
+     main="DEGs salinity 2.5 M NaCl 
+     (log2FC 1.8)")
+legend("topleft", 
+       legend = c("Upregulated genes", "Downregulated genes", "Non-significant genes"), 
+       col = c("mediumseagreen", "indianred", "grey"), 
+       pch = 19, 
+       cex = 0.8, 
+       bty = "n")
+
+points(x = log2fc.25[EupR25.Upregulated.FC18],
+       y = log.pval.25[EupR25.Upregulated.FC18],
+       col = "indianred", cex = 0.7, pch = 19)
+
+points(x = log2fc.25[EupR25.Downregulated.FC18],
+       y = log.pval.25[EupR25.Downregulated.FC18],
+       col = "mediumseagreen", cex = 0.7, pch = 19)
+
+# Restaurar layout original
+par(mfrow = c(1, 1))
+```
+
+A continuación, una representación gráfica por diagramas de Venn de los genes sobreexpresados e infraexpresados, comunes y no comunes, en ambas concentraciones de salinidad.
+
+```{r message=FALSE, warning=FALSE}
+library(VennDiagram)
+
+# Sobreexpresados a fold-change 1.8
+grid.newpage()
+draw.pairwise.venn(
+  area1 = length(EupR06.Upregulated.FC18),
+  area2 = length(EupR25.Upregulated.FC18),
+  cross.area = length(intersect(EupR06.Upregulated.FC18, EupR25.Upregulated.FC18)),
+  
+  category = c("EupR06 Upregulated", "EupR25 Upregulated"),
+  
+  lwd = 1,
+  lty = "solid",
+  fill = c("sandybrown", "mediumpurple"),      
+  alpha = 0.4,
+  cat.pos = c(-20, 20),
+  cat.dist = 0.06,
+  cat.cex = 1.4,
+  cex = 1.6,
+  fontfamily = "sans",
+  fontface = "bold")
+
+grid.text("EupR Upregulated genes (fold-change > 1.8)", y = unit(0.95, "npc"), gp = gpar(fontsize = 16, fontface = "bold"))
+```
+
+```{r}
+# Reprimidos a fold-change 1.8
+
+grid.newpage()
+draw.pairwise.venn(
+  area1 = length(EupR06.Downregulated.FC18),
+  area2 = length(EupR25.Downregulated.FC18),
+  cross.area = length(intersect(EupR06.Downregulated.FC18, EupR25.Downregulated.FC18)),
+  
+  category = c("EupR06 Downregulated", "EupR25 Downregulated"),
+  
+  lwd = 1,
+  lty = "solid",
+  fill = c("lightpink", "steelblue"),      
+  alpha = 0.4,
+  cat.pos = c(-20, 20),
+  cat.dist = 0.06,
+  cat.cex = 1.4,
+  cex = 1.6,
+  fontfamily = "sans",
+  fontface = "bold")
+
+grid.text("EupR Downregulated genes (fold-change < 1.8)", y = unit(0.95, "npc"), gp = gpar(fontsize = 16, fontface = "bold"))
+```
+
+```{r message=FALSE, warning=FALSE}
+grid.newpage()
+draw.quad.venn(
+  area1 = length(EupR06.Upregulated.FC18),
+  area2 = length(EupR06.Downregulated.FC18),
+  area3 = length(EupR25.Upregulated.FC18),
+  area4 = length(EupR25.Downregulated.FC18),
+  
+  n12 = length(intersect(EupR06.Upregulated.FC18, EupR06.Downregulated.FC18)),
+  n13 = length(intersect(EupR06.Upregulated.FC18, EupR25.Upregulated.FC18)),
+  n14 = length(intersect(EupR06.Upregulated.FC18, EupR25.Downregulated.FC18)),
+  n23 = length(intersect(EupR06.Downregulated.FC18, EupR25.Upregulated.FC18)),
+  n24 = length(intersect(EupR06.Downregulated.FC18, EupR25.Downregulated.FC18)),
+  n34 = length(intersect(EupR25.Upregulated.FC18, EupR25.Downregulated.FC18)),
+  
+  n123 = length(Reduce(intersect, list(EupR06.Upregulated.FC18, EupR06.Downregulated.FC18, EupR25.Upregulated.FC18))),
+  n124 = length(Reduce(intersect, list(EupR06.Upregulated.FC18, EupR06.Downregulated.FC18, EupR25.Downregulated.FC18))),
+  n134 = length(Reduce(intersect, list(EupR06.Upregulated.FC18, EupR25.Upregulated.FC18, EupR25.Downregulated.FC18))),
+  n234 = length(Reduce(intersect, list(EupR06.Downregulated.FC18, EupR25.Upregulated.FC18, EupR25.Downregulated.FC18))),
+  n1234 = length(Reduce(intersect, list(EupR06.Upregulated.FC18, EupR06.Downregulated.FC18, EupR25.Upregulated.FC18, EupR25.Downregulated.FC18))),
+  
+  lwd = 1,
+  fill = c("sandybrown", "lightpink", "mediumpurple", "steelblue"),
+  cex = 1.3,
+  cat.cex = 1.5,
+  cat.dist = c(0.15, 0.15, 0.15, 0.15),
+  cat.pos = c(-20, 20, 180, 0),
+  alpha = 0.4,
+  lty = "solid",
+  margin = 0.1,                         
+  scaled = TRUE
+)
+
+grid.text("EupR Differentially Expressed Genes at 0.6 and 2.5 M NaCl\n(fold-change 1.8)", 
+          y = unit(0.92, "npc"), 
+          gp = gpar(fontsize = 16, fontface = "bold"))
+
+```
+
+
+## ANÁLISIS DE LAS CATEGORÍAS COG (CLUSTERS OF ORTHOLOGOUS GENES) DE LOS GENES DEGs
+
+Para ver qué categoias COG según los genes diferencialmente expresados, tanto sobreexpresados como infraexpresados, hay en cada condición de salinidad y a diferentes umbrales de fold-change, primero se carga en R el archivo que contiene toda la información sobre la anotación del genoma de Chromohalobacter salexigens en el que se inclue la categoría COG a la que pertenece cada gen.
+
+```{r message=FALSE, warning=FALSE}
+library(readxl)
+annotation.csal <- read_excel("./data/eggnog_mapper_israelensis.xlsx")
+head(annotation.csal)
+```
+
+Se seleccionarán unicamente la columna correspondiente al gen (al que se le modifica el nombre a solamente "Csal_0000") y la correspondiente a la categoría COG.
+
+```{r}
+csal.cog.letter <- annotation.csal[, c("seed_ortholog","COG_category")]
+csal.cog.letter$seed_ortholog <- sub("^290398\\.", "", csal.cog.letter$seed_ortholog)
+head(csal.cog.letter)
+```
+
+Se crea un vector con los vectores DEGs con los que se va a realizar el análisis.
+
+```{r}
+degs.list <- c("EupR06.Upregulated.FC18", "EupR06.Downregulated.FC18",
+               "EupR25.Upregulated.FC18", "EupR25.Downregulated.FC18")
+
+for (name in degs.list) {
+  assign(name, gsub("gene-", "", get(name))) # Eliminar "gene-" del nombre y dejar Csal_****
+}
+
+# Convertir cada vector de degs.list en data.frame con una columna llamada GeneID
+for (name in degs.list) {
+  df <- data.frame(GeneID = get(name))  # convertir el vector a data.frame
+  assign(name, df)                      # sobrescribir el objeto con el mismo nombre
+}
+
+# Añadir name_NCBI_2019 y Old_locus_tag
+for (name in degs.list) {
+  df <- get(name)
+  df$name_NCBI_2019 <- c.salexigens.name$name_NCBI_2019[
+    match(df$GeneID, c.salexigens.name$Old_locus_tag)]
+  df$name_NCBI_2019[is.na(df$name_NCBI_2019)] <- ""
+  assign(name, df)
+  df$Uniprot_protein_name_2019 <- c.salexigens.name$Uniprot_protein_name_2019[
+    match(df$GeneID, c.salexigens.name$Old_locus_tag)]
+  df$Uniprot_protein_name_2019[is.na(df$Uniprot_protein_name_2019)] <- ""
+  assign(name, df)
+}
+```
+
+Añadir la columna COG_category a los data.frame de DEGs.La función merge hace:
+
+- df:tabla principal (DEGs).
+
+- csal.cog.letter: tabla auxiliar con información COG.
+
+- by.x = "GeneID": la columna en df que se usará como clave.
+
+- by.y = "seed_ortholog": la columna en csal.cog.letter que se usará como clave.
+
+- all.x = TRUE: mantiene todas las filas de df, incluso si no hay coincidencia en csal.cog.letter.
+
+```{r}
+# Para cada tabla de genes
+for (name in degs.list) {
+  df <- get(name)
+  
+  # Añadir columna de COG
+  df <- merge(df, csal.cog.letter, by.x = "GeneID", by.y = "seed_ortholog", all.x = TRUE)
+  
+  # Actualizar el objeto en el entorno
+  assign(name, df)
+}
+
+# Limpiar variables temporales
+rm(df, name)
+```
+
+Se crea una función para contar los genes qué pertenecen a una determinada categoría COG. Se tiene en cuenta los NA como categoría "-" y aquellos genes que presentan varias letras cuentan para cada letra.
+
+La función mutate() es una de las funciones clave del paquete dplyr en R. mutate() crea nuevas columnas o modifica columnas existentes dentro de un data frame.
+
+```{r message=FALSE, warning=FALSE}
+library(dplyr)
+
+count.cog.letter <- function(df, group) {
+  df %>%
+    # Asegura que COG_category sea carácter, reemplazando NA o "-" por "-"
+    mutate(COG_category = ifelse(is.na(COG_category) | COG_category == "-", "-", 
+                                 as.character(COG_category))) %>%
+
+    # Separa las letras del campo COG_category (un gen puede tener varias letras, categorías)
+    mutate(COG_letter = stringr::str_split(COG_category, "")) %>%
+
+    # Desanida la lista para que cada letra tenga su fila propia
+    tidyr::unnest(COG_letter) %>%
+
+    # Agrupa por cada letra individual
+    group_by(COG_letter) %>%
+
+    # Cuenta cuántas veces aparece cada letra
+    summarise(count = n()) %>%
+
+    # Añade el nombre del grupo
+    mutate(group = group) %>%
+
+    # Elimina el agrupamiento
+    ungroup()
+}
+```
+
+```{r message=FALSE, warning=FALSE}
+library(ggplot2)
+library(tidyr) # Para función del gráfico complete()
+```
+
+```{r}
+# GRÁFICO 1: SALINIDAD 0.6 M NaCl (fold-change 1.8)
+
+# Contar letras COG
+genes.06.up.18   <- count.cog.letter(EupR06.Upregulated.FC18, "EupR Upregulated genes")
+genes.06.down.18 <- count.cog.letter(EupR06.Downregulated.FC18, "EupR Downregulated genes")
+
+# Definir orden A-Z y "-" al final
+axis.x <- c(LETTERS, "-") # LETTERS objeto predefinido
+
+# Combinar y completar letras faltantes
+genes.06.data.18 <- bind_rows(genes.06.up.18, genes.06.down.18) %>%
+  mutate(COG_letter = factor(COG_letter, levels = axis.x)) %>%
+  complete(COG_letter, group, fill = list(count = 0))  # se agregan letras faltantes con 0
+
+# Graficar
+ggplot(genes.06.data.18, aes(x = COG_letter, y = count, fill = group)) +
+  geom_bar(stat = "identity", position = "dodge") + # position = "dodge" las barras de diferentes grupos se colocan una al lado de la otra
+  scale_fill_manual(values = c("EupR Upregulated genes" = "lightgreen", "EupR Downregulated genes" = "mediumpurple")) +
+  labs(title = "Distribution of COG categories (0.6 M NaCl)",
+       x = "Function Class", y = "Number of DEGs", fill = NULL) +
+  theme_minimal() +
+theme(
+  legend.position = c(0.25, 0.8), 
+  legend.justification = "center",
+  legend.background = element_rect(fill = "white", color = "black")) +
+  scale_y_continuous(
+    limits = c(0, 80),                      
+    breaks = seq(0,80, 20))              
+```
+
+```{r}
+# GRÁFICO 2: SALINIDAD 2.5 M NaCl (fold-change 1.8)
+
+# Contar letras COG
+genes.25.up.18   <- count.cog.letter(EupR25.Upregulated.FC18, "EupR Upregulated genes")
+genes.25.down.18 <- count.cog.letter(EupR25.Downregulated.FC18, "EupR Downregulated genes")
+
+# Definir orden A-Z y "-" al final
+axis.x <- c(LETTERS, "-") # LETTERS objeto predefinido
+
+# Combinar y completar letras faltantes
+genes.25.data.18 <- bind_rows(genes.25.up.18, genes.25.down.18) %>%
+  mutate(COG_letter = factor(COG_letter, levels = axis.x)) %>%
+  complete(COG_letter, group, fill = list(count = 0))  # se agregan letras faltantes con 0
+
+# Graficar
+ggplot(genes.25.data.18, aes(x = COG_letter, y = count, fill = group)) +
+  geom_bar(stat = "identity", position = "dodge") + # position = "dodge" las barras de diferentes grupos se colocan una al lado de la otra
+  scale_fill_manual(values = c("EupR Upregulated genes" = "lightgreen", "EupR Downregulated genes" = "mediumpurple")) +
+  labs(title = "Distribution of COG categories (2.5 M NaCl)",
+       x = "Function Class", y = "Number of DEGs", fill = NULL) +
+  theme_minimal() +
+theme(
+  legend.position = c(0.25, 0.8), 
+  legend.justification = "center",
+  legend.background = element_rect(fill = "white", color = "black")) +
+    scale_y_continuous(
+    limits = c(0, 80),                      
+    breaks = seq(0,80, 20))
+```
+
+## ANÁLISIS DE LAS CATEGORIAS KEGG (KYOTO ENCYCLOPEDIA OF GENES AND GENOMES) DE LOS GENES DEGs
+
+```{r}
+primary.category.kegg <- read_excel("./data/c_salexigens_kegg_category.xlsx", sheet = 2)
+```
+
+```{r}
+# FUNCIÓN PARA AÑADIR COLUMNAS
+add.columns <- function(df1, df2, new.column = "new.column") {
+  
+  # Crear nueva columna y recorrer cada gene en la columna GeneID y ejecutar...
+  df1[[new.column]] <- sapply(df1$GeneID, function(gene) {
+    
+    # sapply: recorre todas las columnas de df2 y verifica si el valor gene aparece en la columna.
+    # gene %in% col: ¿el valor gene se encuentra dentro de los valores del vector col? TRUE o FALSE
+    # names(df2): selecciona los nombres de las columnas donde se encontró el mismo nombre (TRUE)
+    matches <- names(df2)[sapply(df2, function(col) gene %in% col)]
+    
+    if (length(matches) == 0) NA_character_ 
+    else paste(matches, collapse = ",") # Si hay varias columnas en las que aparece separar por comas
+  })
+  return(df1)
+}
+```
+
+```{r}
+# FUNCIÓN PARA CONTAR
+count.kegg.category <- function(df, group, col.name) {
+  df %>%
+    # Convertir la columna a carácter
+    mutate(category = as.character(.data[[col.name]])) %>%
+    
+    # Eliminar filas vacías o "NA"
+    filter(!is.na(category)) %>%
+    
+    # Separar por coma + espacio (si hay múltiples categorías)
+    mutate(category = stringr::str_split(category, ",\\s*")) %>%
+    
+    # Separar en filas
+    tidyr::unnest(category) %>%
+    
+    # Agrupar por categoría
+    group_by(category) %>%
+    
+    # Contar ocurrencias
+    summarise(count = n()) %>%
+    
+    # Añadir nombre del grupo
+    mutate(group = group) %>%
+    
+        # Elimina el agrupamiento
+    ungroup()
+}
+```
+
+```{r}
+EupR06.Upregulated.FC18 <- add.columns(EupR06.Upregulated.FC18, primary.category.kegg, "KEGG 1 category")
+EupR06.Downregulated.FC18 <- add.columns(EupR06.Downregulated.FC18, primary.category.kegg, "KEGG 1 category")
+EupR25.Upregulated.FC18 <- add.columns(EupR25.Upregulated.FC18, primary.category.kegg, "KEGG 1 category")
+EupR25.Downregulated.FC18 <- add.columns(EupR25.Downregulated.FC18, primary.category.kegg, "KEGG 1 category")
+
+genes.06.up.kegg.18 <- count.kegg.category(EupR06.Upregulated.FC18, "EupR06 UpR", "KEGG 1 category")
+genes.06.down.kegg.18 <- count.kegg.category(EupR06.Downregulated.FC18, "EupR06 DownR", "KEGG 1 category")
+genes.25.up.kegg.18 <- count.kegg.category(EupR25.Upregulated.FC18, "EupR25 UpR", "KEGG 1 category")
+genes.25.down.kegg.18 <- count.kegg.category(EupR25.Downregulated.FC18, "EupR25 DownR", "KEGG 1 category")
+
+genes.kegg1.data <- bind_rows(genes.06.up.kegg.18, genes.06.down.kegg.18, genes.25.up.kegg.18, genes.25.down.kegg.18)
+genes.kegg1.data$category <- gsub(" ", "\n", genes.kegg1.data$category)
+
+# Graficar resultados
+ggplot(genes.kegg1.data, aes(x = category, y = count, fill = group)) +
+  geom_bar(stat = "identity", position = position_dodge(preserve = "single")) +
+  labs(
+    x = "Primary KEGG Categories",
+    y = "Number of genes",
+    fill = NULL) +
+  theme_minimal() +
+  theme(
+    legend.position = c(0.4, 0.8),
+    legend.justification = "center",
+    legend.background = element_rect(fill = "white")) +
+  guides(fill = guide_legend(ncol = 2)) +
+  scale_y_continuous(
+    limits = c(0, 200),
+    breaks = seq(0, 200, 20))
+```
+
+```{r}
+metabolism.category.kegg <- read_excel("./data/c_salexigens_kegg_category.xlsx", sheet = 3)
+
+EupR06.Upregulated.FC18 <- add.columns(EupR06.Upregulated.FC18, metabolism.category.kegg, "KEGG metabolism category")
+EupR06.Downregulated.FC18 <- add.columns(EupR06.Downregulated.FC18, metabolism.category.kegg, "KEGG metabolism category")
+EupR25.Upregulated.FC18 <- add.columns(EupR25.Upregulated.FC18, metabolism.category.kegg, "KEGG metabolism category")
+EupR25.Downregulated.FC18 <- add.columns(EupR25.Downregulated.FC18, metabolism.category.kegg, "KEGG metabolism category")
+```
+
+```{r}
+carbohydrate.metabolism.category.kegg <- read_excel("./data/c_salexigens_kegg_category.xlsx", sheet = 5)
+energy.metabolism.category.kegg <- read_excel("./data/c_salexigens_kegg_category.xlsx", sheet = 6)
+aminoacid.metabolism.category.kegg <- read_excel("./data/c_salexigens_kegg_category.xlsx", sheet = 7)
+
+EupR06.Upregulated.FC18 <- add.columns(EupR06.Upregulated.FC18, carbohydrate.metabolism.category.kegg, "KEGG carbohydrate metabolism category")
+EupR06.Downregulated.FC18 <- add.columns(EupR06.Downregulated.FC18, carbohydrate.metabolism.category.kegg, "KEGG carbohydrate metabolism category")
+EupR25.Upregulated.FC18 <- add.columns(EupR25.Upregulated.FC18, carbohydrate.metabolism.category.kegg, "KEGG carbohydrate metabolism category")
+EupR25.Downregulated.FC18 <- add.columns(EupR25.Downregulated.FC18, carbohydrate.metabolism.category.kegg, "KEGG carbohydrate metabolism category")
+
+EupR06.Upregulated.FC18 <- add.columns(EupR06.Upregulated.FC18, energy.metabolism.category.kegg, "KEGG energy metabolism category")
+EupR06.Downregulated.FC18 <- add.columns(EupR06.Downregulated.FC18, energy.metabolism.category.kegg, "KEGG energy metabolism category")
+EupR25.Upregulated.FC18 <- add.columns(EupR25.Upregulated.FC18, energy.metabolism.category.kegg, "KEGG energy metabolism category")
+EupR25.Downregulated.FC18 <- add.columns(EupR25.Downregulated.FC18, energy.metabolism.category.kegg, "KEGG energy metabolism category")
+
+EupR06.Upregulated.FC18 <- add.columns(EupR06.Upregulated.FC18, aminoacid.metabolism.category.kegg, "KEGG amino acid metabolism category")
+EupR06.Downregulated.FC18 <- add.columns(EupR06.Downregulated.FC18, aminoacid.metabolism.category.kegg, "KEGG amino acid metabolism category")
+EupR25.Upregulated.FC18 <- add.columns(EupR25.Upregulated.FC18, aminoacid.metabolism.category.kegg, "KEGG amino acid metabolism category")
+EupR25.Downregulated.FC18 <- add.columns(EupR25.Downregulated.FC18, aminoacid.metabolism.category.kegg, "KEGG amino acid metabolism category")
+```
+
+```{r}
+# CARBOHYDRATE METABOLISM
+genes.06.up.carbohydrate.metabolism.kegg.18 <- count.kegg.category(EupR06.Upregulated.FC18, "EupR06 UpR", "KEGG carbohydrate metabolism category")
+genes.06.down.carbohydrate.metabolism.kegg.18 <- count.kegg.category(EupR06.Downregulated.FC18, "EupR06 DownR", "KEGG carbohydrate metabolism category")
+genes.25.up.carbohydrate.metabolism.kegg.18 <- count.kegg.category(EupR25.Upregulated.FC18, "EupR25 UpR", "KEGG carbohydrate metabolism category")
+genes.25.down.carbohydrate.metabolism.kegg.18 <- count.kegg.category(EupR25.Downregulated.FC18, "EupR25 DownR", "KEGG carbohydrate metabolism category")
+
+genes.carbohydrate.metabolism.data.1 <- bind_rows(genes.06.up.carbohydrate.metabolism.kegg.18, genes.25.up.carbohydrate.metabolism.kegg.18)
+genes.carbohydrate.metabolism.data.2 <- bind_rows(genes.06.down.carbohydrate.metabolism.kegg.18, genes.25.down.carbohydrate.metabolism.kegg.18)
+
+p1 <- ggplot(genes.carbohydrate.metabolism.data.1, aes(x = count, y = category, fill = group)) +
+  geom_bar(stat = "identity", position = position_dodge(preserve = "single")) +
+  labs(
+    x = NULL,
+    y = NULL,
+    fill = NULL) +
+  theme_minimal() +
+  scale_fill_manual(values = c("EupR06 UpR" = "steelblue", "EupR25 UpR" = "lightblue"))+
+  scale_x_continuous(limits = c(0,10), breaks = seq(0,10,2))
+
+p2 <- ggplot(genes.carbohydrate.metabolism.data.2, aes(x = count, y = category, fill = group)) +
+  geom_bar(stat = "identity", position = position_dodge(preserve = "single")) +
+  labs(
+    x = "Number of genes",
+    y = NULL,
+    fill = NULL) +
+  theme_minimal() +
+  scale_fill_manual(values = c("EupR06 DownR" = "steelblue", "EupR25 DownR" = "lightblue"))+
+  scale_x_continuous(limits = c(0,10), breaks = seq(0,10,2))
+
+library(gridExtra)
+final.plot.1 <- grid.arrange(p1, p2, ncol = 1)
+
+ggsave("genes_carbohydrate_plot.png", plot = final.plot.1, 
+       width = 12, height = 10, units = "in", dpi = 300)
+```
+
+```{r}
+# ENERGY METABOLISM
+genes.06.up.energy.metabolism.kegg.18 <- count.kegg.category(EupR06.Upregulated.FC18, "EupR06 UpR", "KEGG energy metabolism category")
+genes.06.down.energy.metabolism.kegg.18 <- count.kegg.category(EupR06.Downregulated.FC18, "EupR06 DownR", "KEGG energy metabolism category")
+genes.25.up.energy.metabolism.kegg.18 <- count.kegg.category(EupR25.Upregulated.FC18, "EupR25 UpR", "KEGG energy metabolism category")
+genes.25.down.energy.metabolism.kegg.18 <- count.kegg.category(EupR25.Downregulated.FC18, "EupR25 DownR", "KEGG energy metabolism category")
+
+genes.energy.metabolism.data.1 <- bind_rows(genes.06.up.energy.metabolism.kegg.18, genes.25.up.energy.metabolism.kegg.18)
+genes.energy.metabolism.data.2 <- bind_rows(genes.06.down.energy.metabolism.kegg.18, genes.25.down.energy.metabolism.kegg.18)
+
+p3 <- ggplot(genes.energy.metabolism.data.1, aes(x = count, y = category, fill = group)) +
+  geom_bar(stat = "identity", position = position_dodge(preserve = "single")) +
+  labs(
+    x = NULL,
+    y = NULL,
+    fill = NULL) +
+  theme_minimal() +
+  scale_fill_manual(values = c("EupR06 UpR" = "orchid", "EupR25 UpR" = "thistle"))+
+  scale_x_continuous(limits = c(0,10), breaks = seq(0,10,2))
+
+p4 <- ggplot(genes.energy.metabolism.data.2, aes(x = count, y = category, fill = group)) +
+  geom_bar(stat = "identity", position = position_dodge(preserve = "single")) +
+  labs(
+    x = "Number of genes",
+    y = NULL,
+    fill = NULL) +
+  theme_minimal() +
+  scale_fill_manual(values = c("EupR06 DownR" = "orchid", "EupR25 DownR" = "thistle"))+
+  scale_x_continuous(limits = c(0,10), breaks = seq(0,10,2))
+
+final.plot.2 <- grid.arrange(p3, p4, ncol = 1)
+
+ggsave("genes_energy_plot.png", plot = final.plot.2, 
+       width = 12, height = 10, units = "in", dpi = 300)
+```
+
+```{r}
+# AMINO ACID METABOLISM
+genes.06.up.aminoacid.metabolism.kegg.18 <- count.kegg.category(EupR06.Upregulated.FC18, "EupR06 UpR", "KEGG amino acid metabolism category")
+genes.06.down.aminoacid.metabolism.kegg.18 <- count.kegg.category(EupR06.Downregulated.FC18, "EupR06 DownR", "KEGG amino acid metabolism category")
+genes.25.up.aminoacid.metabolism.kegg.18 <- count.kegg.category(EupR25.Upregulated.FC18, "EupR25 UpR", "KEGG amino acid metabolism category")
+genes.25.down.aminoacid.metabolism.kegg.18 <- count.kegg.category(EupR25.Downregulated.FC18, "EupR25 DownR", "KEGG amino acid metabolism category")
+
+genes.aminoacid.metabolism.data.1 <- bind_rows(genes.06.up.aminoacid.metabolism.kegg.18, genes.25.up.aminoacid.metabolism.kegg.18)
+genes.aminoacid.metabolism.data.2 <- bind_rows(genes.06.down.aminoacid.metabolism.kegg.18, genes.25.down.aminoacid.metabolism.kegg.18)
+
+p5 <- ggplot(genes.aminoacid.metabolism.data.1, aes(x = count, y = category, fill = group)) +
+  geom_bar(stat = "identity", position = position_dodge(preserve = "single")) +
+  labs(
+    x = NULL,
+    y = NULL,
+    fill = NULL) +
+  theme_minimal() +
+  scale_fill_manual(values = c("EupR06 UpR" = "salmon", "EupR25 UpR" = "peachpuff"))+
+  scale_x_continuous(limits = c(0,10), breaks = seq(0,10,2))
+
+p6 <- ggplot(genes.aminoacid.metabolism.data.2, aes(x = count, y = category, fill = group)) +
+  geom_bar(stat = "identity", position = position_dodge(preserve = "single")) +
+  labs(
+    x = "Number of genes",
+    y = NULL,
+    fill = NULL) +
+  theme_minimal() +
+  scale_fill_manual(values = c("EupR06 DownR" = "salmon", "EupR25 DownR" = "peachpuff"))+
+  scale_x_continuous(limits = c(0,10), breaks = seq(0,10,2))
+
+final.plot.3 <- grid.arrange(p5, p6, ncol = 1)
+
+ggsave("genes_amino_acid_plot.png", plot = final.plot.3, 
+       width = 16, height = 10, units = "in", dpi = 300)
+```
+
+```{r}
+# KO
+csal.ko <- annotation.csal[, c("seed_ortholog","KEGG_ko")]
+csal.ko$seed_ortholog <- sub("^290398\\.", "", csal.ko$seed_ortholog)
+csal.ko$KEGG_ko <- gsub("ko:", "", csal.ko$KEGG_ko)
+head(csal.ko)
+```
+
+```{r}
+list_names <- c(
+  "EupR06.Upregulated.FC18",
+  "EupR06.Downregulated.FC18",
+  "EupR25.Upregulated.FC18",
+  "EupR25.Downregulated.FC18")
+
+for (nm in list_names) {
+  df <- get(nm)
+  df <- merge(df, csal.ko[, c("seed_ortholog", "KEGG_ko")],
+              by.x = "GeneID", by.y = "seed_ortholog", all.x = TRUE)
+  assign(nm, df, envir = .GlobalEnv)
+}
+```
+
+## ANÁLISIS DE LOS FACTORES DE TRANSCRIPCIÓN, REGULADORES DE RESPUESTA E HISTIDINAS KINASAS
+
+```{r}
+TFs.class <- read_excel("./data/c_salexigens_tf.xlsx", sheet = 2)
+
+EupR06.Upregulated.FC18 <- add.columns(EupR06.Upregulated.FC18, TFs.class, "TFs class")
+EupR06.Downregulated.FC18 <- add.columns(EupR06.Downregulated.FC18, TFs.class, "TFs class")
+EupR25.Upregulated.FC18 <- add.columns(EupR25.Upregulated.FC18, TFs.class, "TFs class")
+EupR25.Downregulated.FC18 <- add.columns(EupR25.Downregulated.FC18, TFs.class, "TFs class")
+```
+
+```{r}
+write_xlsx(EupR06.Upregulated.FC18, path = "./EupR06_Upregulated_FC18.xlsx")
+write_xlsx(EupR06.Downregulated.FC18, path = "./EupR06_Downregulated_FC18.xlsx")
+write_xlsx(EupR25.Upregulated.FC18, path = "./EupR25_Upregulated_FC18.xlsx")
+write_xlsx(EupR25.Downregulated.FC18, path = "./EupR25_Downregulated_FC18.xlsx")
+```
+
+
+
+
+
