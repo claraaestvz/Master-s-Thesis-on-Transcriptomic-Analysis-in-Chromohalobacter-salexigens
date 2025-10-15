@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Arguments
-DIR="$1"   # folder path
+DIR="$1"   # folder name
 NAME="$2"  # base sample name
 
 # Fixed paths to genome and annotation
