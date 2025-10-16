@@ -220,7 +220,7 @@ theme(
 counts.genes.06
 ```
 
-En vista de los resultados, se elige el umbral de fold-change 1.8.
+En vista de los resultados, se eligen estudiar los umbrales de fold-change: 1.8 y 2.
 
 ```{r}
 # EXPRESIÓN DIFERENCIAL EN 0.6 M NaCl
@@ -995,6 +995,7 @@ write_xlsx(EupR06.Downregulated.FC18, path = "./EupR06_Downregulated_FC18.xlsx")
 write_xlsx(EupR25.Upregulated.FC18, path = "./EupR25_Upregulated_FC18.xlsx")
 write_xlsx(EupR25.Downregulated.FC18, path = "./EupR25_Downregulated_FC18.xlsx")
 ```
+
 
 
 
