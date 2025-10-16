@@ -1,8 +1,8 @@
-# Master's Thesis on Transcriptomic Analysis in Chromohalobacter-salexigens
-Repository containing Bash and R scripts for transcriptomic analysis of Chromohalobacter salexigens.
+# Master's Thesis on Transcriptomic Analysis in *Chromohalobacter-salexigens*
+Repository containing Bash and R scripts for transcriptomic analysis of *Chromohalobacter salexigens*.
 
 ## Analysis Description
-This repository contains the Bash and R scripts used to perform a transcriptomic (RNA-seq) analysis in the halophilic bacterium Chromohalobacter salexigens. The purpose of this analysis was to determine the molecular mechanisms involving a key regulatory molecule in this bacterium, EupR. The repository provides a reproducible pipeline for data preprocessing, differential gene expression analysis, and functional analysis to facilitate future studies on halophilic gene regulation.
+This repository contains the Bash and R scripts used to perform a transcriptomic (RNA-seq) analysis in the halophilic bacterium *Chromohalobacter salexigens*. The purpose of this analysis was to determine the molecular mechanisms involving a key regulatory molecule in this bacterium, EupR. The repository provides a reproducible pipeline for data preprocessing, differential gene expression analysis and functional analysis to facilitate future studies on halophilic gene regulation.
 
 Initially, the analysis was performed on a remote Linux environment accessed from a Windows system through an SSH connection using MobaXterm as the terminal client. Subsequently, the analysis was carried out in R (v4.3.1) within the RStudio environment.
 
