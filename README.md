@@ -16,7 +16,7 @@ A total of 14 samples of RNAseq data were analyzed. Two datasets were used:
 1) Sample processing using the cat command to obtain the complete R1 and R2 (paired-end) files for each sample in .fastq format.
 2) Quality assessment of the reads using the FastQC software.
 3) Indexing of the reference genome with the Burrows-Wheeler Aligner (BWA), a required step prior to mapping the reads to the reference genome.
-4) Mapping of reads to the reference genome using BWA-MEM. The SAMTOOLS software was used to convert the mapping .sam files into .bam format and to analyse mapping statistics.
+4) Mapping of reads to the reference genome using BWA-MEM. The SAMtools software was used to convert the mapping .sam files into .bam format and to analyse mapping statistics.
 5) Quantification of reads mapped to the reference genome using the FeatureCounts software.
 
 ## Analyses performed in R (RStudio)
