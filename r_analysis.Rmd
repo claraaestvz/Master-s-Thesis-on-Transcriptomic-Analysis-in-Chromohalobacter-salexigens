@@ -236,13 +236,25 @@ names(adjusted.pval.06) <- genes.ids.06
 EupR06.Upregulated.FC18 <- genes.ids.06[log2fc.06 > log2(1.8) & 
                                    adjusted.pval.06 < 0.05]
 
+EupR06.Upregulated.FC2 <- genes.ids.06[log2fc.06 > log2(2.0) & 
+                                   adjusted.pval.06 < 0.05]
+
 # Reprimidos
 EupR06.Downregulated.FC18 <- genes.ids.06[log2fc.06 < -log2(1.8) & 
                                    adjusted.pval.06 < 0.05]
 
+EupR06.Downregulated.FC2 <- genes.ids.06[log2fc.06 < -log2(2.0) & 
+                                   adjusted.pval.06 < 0.05]
+
+# Para fold change 1.8
 cat("Para un fold change de 1.8 hay", 
     length(EupR06.Upregulated.FC18), "genes sobreexpresados y", 
     length(EupR06.Downregulated.FC18), "genes infraexpresados.\n")
+
+# Para fold change 2
+cat("Para un fold change de 2 hay", 
+    length(EupR06.Upregulated.FC2), "genes sobreexpresados y", 
+    length(EupR06.Downregulated.FC2), "genes infraexpresados.\n")
 ```
 
 ```{r}
@@ -265,7 +277,9 @@ save.genes.fc <- function(genes, result_table, file_name) {
 # La función setdiff() en R devuelve los elementos que están en el primer conjunto pero no en el segundo.
 
 save.genes.fc(EupR06.Upregulated.FC18, df.result.EupR06vs.Wt06, "./degs/fold_change_18/genes_up_06_FC18.xlsx")
+save.genes.fc(EupR06.Upregulated.FC2, df.result.EupR06vs.Wt06, "./degs/fold_change_2/genes_up_06_FC2.xlsx")
 save.genes.fc(EupR06.Downregulated.FC18, df.result.EupR06vs.Wt06, "./degs/fold_change_18/genes_down_06_FC18.xlsx")
+save.genes.fc(EupR06.Downregulated.FC2, df.result.EupR06vs.Wt06, "./degs/fold_change_2/genes_down_06_FC2.xlsx")
 ```
 
 Exactamente lo mismo para la condición 2.5 M NaCl.
@@ -366,16 +380,30 @@ names(adjusted.pval.25) <- genes.ids.25
 EupR25.Upregulated.FC18 <- genes.ids.25[log2fc.25 > log2(1.8) & 
                                    adjusted.pval.25 < 0.05]
 
+EupR25.Upregulated.FC2 <- genes.ids.25[log2fc.25 > log2(2.0) & 
+                                   adjusted.pval.25 < 0.05]
+
 # Reprimidos
 EupR25.Downregulated.FC18 <- genes.ids.25[log2fc.25 < -log2(1.8) & 
                                    adjusted.pval.25 < 0.05]
 
+EupR25.Downregulated.FC2 <- genes.ids.25[log2fc.25 < -log2(2.0) & 
+                                   adjusted.pval.25 < 0.05]
+
+# Para fold change 1.8
 cat("Para un fold change de 1.8 hay", 
     length(EupR25.Upregulated.FC18), "genes sobreexpresados y", 
     length(EupR25.Downregulated.FC18), "genes infraexpresados.\n")
 
+# Para fold change 2
+cat("Para un fold change de 2 hay", 
+    length(EupR25.Upregulated.FC2), "genes sobreexpresados y", 
+    length(EupR25.Downregulated.FC2), "genes infraexpresados.\n")
+
 save.genes.fc(EupR25.Upregulated.FC18, df.result.EupR25vs.Wt25, "./degs/fold_change_18/genes_up_25_FC18.xlsx")
+save.genes.fc(EupR25.Upregulated.FC2, df.result.EupR25vs.Wt25, "./degs/fold_change_2/genes_up_25_FC2.xlsx")
 save.genes.fc(EupR25.Downregulated.FC18, df.result.EupR25vs.Wt25, "./degs/fold_change_18/genes_down_25_FC18.xlsx")
+save.genes.fc(EupR25.Downregulated.FC2, df.result.EupR25vs.Wt25, "./degs/fold_change_2/genes_down_25_FC2.xlsx")
 ```
 
 ```{r}
@@ -967,6 +995,7 @@ write_xlsx(EupR06.Downregulated.FC18, path = "./EupR06_Downregulated_FC18.xlsx")
 write_xlsx(EupR25.Upregulated.FC18, path = "./EupR25_Upregulated_FC18.xlsx")
 write_xlsx(EupR25.Downregulated.FC18, path = "./EupR25_Downregulated_FC18.xlsx")
 ```
+
 
 
 
